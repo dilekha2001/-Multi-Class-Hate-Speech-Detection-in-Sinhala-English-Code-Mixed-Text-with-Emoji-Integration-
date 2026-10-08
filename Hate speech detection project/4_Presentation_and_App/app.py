@@ -1,11 +1,12 @@
 """
-Hate Speech Detection - Streamlit Demo Dashboard
+Hate Speech Detection - Streamlit Demo Dashboard (Gemmbi)
 
+Sinhala-English code-mixed hate speech detection with emoji integration (XLM-RoBERTa).
 4 navigation tabs for examiner review:
- 1. Live Moderation Tool   - predict code-mixed comments (0=Neutral, 1=Offensive, 2=Hate Speech)
- 2. Experimental Metrics    - Baseline vs Proposed macro-F1 comparison (+9.50%)
+ 1. Live Moderation Tool    - predict code-mixed comments (0=Neutral, 1=Offensive, 2=Hate Speech)
+ 2. Experimental Metrics     - Baseline vs Proposed macro-F1 comparison (+9.50pp)
  3. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
- 4. Research Paper (PDF)    - embedded paper viewer (800px) + download button
+ 4. Research Paper (PDF)     - embedded paper viewer (800px) + download button
 
 Run from Gemmbi root:  streamlit run 4_Presentation_and_App/app.py
 """
@@ -37,12 +38,26 @@ except Exception as e:
     st.stop()
 
 ID2LABEL = {0: "Neutral", 1: "Offensive", 2: "Hate Speech"}
-LABEL2ID = {v: k for k, v in ID2LABEL.items()}
 STR2ID = {"neutral": 0, "offensive": 1, "hate": 2}
+LABEL_COLOR = {0: "green", 1: "orange", 2: "red"}
 
 # Verified Colab T4 run - used only if result files are missing.
-FALLBACK_FOLDS_BASE = [0.5746, 0.6008, 0.5814, 0.5906, 0.5707]
-FALLBACK_FOLDS_PROP = [0.6631, 0.7101, 0.6367, 0.6972, 0.6861]
+FALLBACK = {
+    "base_mean": 0.5836, "base_std": 0.0122,
+    "prop_mean": 0.6786, "prop_std": 0.0291,
+    "base_acc": 0.5948, "prop_acc": 0.6908,
+    "base_auc": 0.7673, "prop_auc": 0.8526,
+    "base_folds": [0.5746, 0.6008, 0.5814, 0.5906, 0.5707],
+    "prop_folds": [0.6631, 0.7101, 0.6367, 0.6972, 0.6861],
+    "per_class": {
+        "neutral": {"base_f1": 0.6679, "prop_f1": 0.7528},
+        "offensive": {"base_f1": 0.4155, "prop_f1": 0.5617},
+        "hate": {"base_f1": 0.6674, "prop_f1": 0.7214},
+    },
+    "cm_no": [[549, 231, 66], [195, 243, 125], [44, 128, 366]],
+    "cm_with": [[654, 136, 56], [176, 312, 75], [57, 102, 379]],
+    "W": 0.0, "p": 0.0625, "alpha": 0.05,
+}
 
 
 @st.cache_resource(show_spinner="Loading demo models (10 sec)...")
@@ -81,12 +96,9 @@ def load_xlmr():
     except Exception as e:
         return None, None, None, None, f"torch/transformers not installed ({e})"
 
-    summary = SUMMARY_DIR / "summary_metrics_full.json"
-    allfolds = OUT_DIR / "with_emoji" / "all_folds_metrics.json"
     try:
-        folds = json.loads(allfolds.read_text(encoding="utf-8"))
-        best = max(folds, key=lambda m: m["macro_f1"])
-        fold_no = int(best["fold"])
+        folds = json.loads((OUT_DIR / "with_emoji" / "all_folds_metrics.json").read_text(encoding="utf-8"))
+        fold_no = int(max(folds, key=lambda m: m["macro_f1"])["fold"])
     except Exception:
         fold_no = 1
     model_dir = OUT_DIR / "with_emoji" / f"fold_{fold_no}" / "model"
@@ -118,25 +130,36 @@ def predict_xlmr(text_clean, tok, mdl, device):
 
 def load_summary():
     """Headline numbers, live from result files with verified fallbacks."""
-    res = {
-        "base_mean": 0.5836, "base_std": 0.0122,
-        "prop_mean": 0.6786, "prop_std": 0.0291,
-        "base_folds": list(FALLBACK_FOLDS_BASE), "prop_folds": list(FALLBACK_FOLDS_PROP),
-        "W": 0.0, "p": 0.0625, "alpha": 0.05,
-        "from_files": False,
-    }
+    res = dict(FALLBACK)
+    res["from_files"] = False
     try:
         df = pd.read_csv(SUMMARY_DIR / "summary_metrics.csv")
-        row = df[(df["condition"] == "no_emoji") & (df["metric"] == "macro_f1")].iloc[0]
-        res["base_mean"], res["base_std"] = float(row["mean"]), float(row["std"])
-        row = df[(df["condition"] == "with_emoji") & (df["metric"] == "macro_f1")].iloc[0]
-        res["prop_mean"], res["prop_std"] = float(row["mean"]), float(row["std"])
+        b = df[(df["condition"] == "no_emoji") & (df["metric"] == "macro_f1")].iloc[0]
+        p = df[(df["condition"] == "with_emoji") & (df["metric"] == "macro_f1")].iloc[0]
+        res["base_mean"], res["base_std"] = float(b["mean"]), float(b["std"])
+        res["prop_mean"], res["prop_std"] = float(p["mean"]), float(p["std"])
+        res["base_acc"] = float(df[(df["condition"] == "no_emoji") & (df["metric"] == "accuracy")].iloc[0]["mean"])
+        res["prop_acc"] = float(df[(df["condition"] == "with_emoji") & (df["metric"] == "accuracy")].iloc[0]["mean"])
+        res["base_auc"] = float(df[(df["condition"] == "no_emoji") & (df["metric"] == "macro_auc_roc")].iloc[0]["mean"])
+        res["prop_auc"] = float(df[(df["condition"] == "with_emoji") & (df["metric"] == "macro_auc_roc")].iloc[0]["mean"])
+        pc = {}
+        for label in ["neutral", "offensive", "hate"]:
+            row_b = df[(df["condition"] == "no_emoji") & (df["metric"] == f"{label}_f1")].iloc[0]
+            row_p = df[(df["condition"] == "with_emoji") & (df["metric"] == f"{label}_f1")].iloc[0]
+            pc[label] = {"base_f1": float(row_b["mean"]), "prop_f1": float(row_p["mean"])}
+        res["per_class"] = pc
         w = json.loads((SUMMARY_DIR / "wilcoxon_result.json").read_text(encoding="utf-8"))
         res["base_folds"] = [round(x, 4) for x in w["baseline_macro_f1_per_fold"]]
         res["prop_folds"] = [round(x, 4) for x in w["proposed_macro_f1_per_fold"]]
         res["W"] = float(w["wilcoxon_statistic"])
         res["p"] = float(w["wilcoxon_p_value"])
         res["alpha"] = float(w.get("alpha", 0.05))
+        full = json.loads((SUMMARY_DIR / "summary_metrics_full.json").read_text(encoding="utf-8"))
+        cms = full.get("confusion_matrices", {})
+        if "no_emoji" in cms:
+            res["cm_no"] = cms["no_emoji"]
+        if "with_emoji" in cms:
+            res["cm_with"] = cms["with_emoji"]
         res["from_files"] = True
     except Exception:
         pass
@@ -144,30 +167,88 @@ def load_summary():
 
 
 def find_paper_pdf():
-    """Compiled research paper PDF: 4_Presentation_and_App/paper.pdf (drop it in after Overleaf export)."""
+    """Compiled research paper PDF.
+
+    Priority: paper.pdf / main.pdf, then any *paper* name (case-insensitive),
+    then the sole PDF in the folder (e.g. Hate_Speech_Detection.pdf).
+    To change the displayed paper, save it as paper.pdf next to app.py.
+    """
     for name in ["paper.pdf", "main.pdf"]:
         p = APP_DIR / name
         if p.exists():
             return p
-    for p in sorted(APP_DIR.glob("*paper*.pdf")):
-        return p
-    return None
+    for p in sorted(APP_DIR.glob("*.pdf")):
+        if "paper" in p.name.lower():
+            return p
+    sole = sorted(APP_DIR.glob("*.pdf"))
+    return sole[0] if len(sole) == 1 else None
 
 
 RESULTS = load_summary()
 
-st.set_page_config(page_title="Sinhala-English Hate Speech Demo (Gemmbi)", layout="wide")
-st.title("Multi-Class Hate Speech Detection (Sinhala-English + Emoji)")
-st.caption(
-    "Research question: does encoding emoji as text improve macro-F1 of fine-tuned XLM-RoBERTa "
-    "on neutral / offensive / hate Facebook + YouTube comments?"
-)
+# ---------------- page chrome ----------------
+st.set_page_config(page_title="Sinhala-English Hate Speech Demo", layout="wide")
+st.markdown("""
+<style>
+.hero {
+  background: linear-gradient(120deg, #1a237e 0%, #4a148c 60%, #880e4f 100%);
+  border-radius: 14px; padding: 26px 30px; color: white; margin-bottom: 18px;
+}
+.hero h1 { color: white !important; font-size: 1.7rem; margin: 0 0 6px 0; }
+.hero p { color: #e1bee7 !important; margin: 0; font-size: 0.95rem; }
+.stat-card {
+  background: #f5f3ff; border: 1px solid #d1c4e9; border-radius: 12px;
+  padding: 12px 16px; text-align: center;
+}
+.stat-card .v { font-size: 1.45rem; font-weight: 700; color: #4a148c; }
+.stat-card .l { font-size: 0.8rem; color: #555; }
+.badge {
+  display: inline-block; background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7;
+  border-radius: 20px; padding: 3px 14px; font-size: 0.82rem; font-weight: 600; margin: 2px 4px 2px 0;
+}
+.footer { color: #888; font-size: 0.78rem; text-align: center; margin-top: 26px; }
+</style>
+<div class="hero">
+  <h1>🛡️ Sinhala-English Hate Speech Detection</h1>
+  <p>Does reading emoji help? Three-class moderation (Neutral / Offensive / Hate) with XLM-RoBERTa ·
+  IT41043 Intelligent Systems · Horizon Campus</p>
+</div>
+""", unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs([
+with st.sidebar:
+    st.header("📌 Project at a glance")
+    st.write(
+        "**Research question:** does encoding emoji as text improve macro-F1 of fine-tuned "
+        "XLM-RoBERTa on neutral / offensive / hate Facebook + YouTube comments?"
+    )
+    st.markdown(
+        f"<span class='badge'>Baseline {RESULTS['base_mean']*100:.2f}%</span>"
+        f"<span class='badge'>Proposed {RESULTS['prop_mean']*100:.2f}%</span>"
+        f"<span class='badge'>+{(RESULTS['prop_mean']-RESULTS['base_mean'])*100:.2f}pp · 5/5 folds</span>",
+        unsafe_allow_html=True,
+    )
+    st.divider()
+    st.subheader("🗂️ Corpus")
+    st.write(
+        "- **1,947** comments (Facebook 1,255 · YouTube 692)\n"
+        "- Neutral 846 · Offensive 563 · Hate 538\n"
+        "- **707** comments (36%) contain emoji\n"
+        "- Stratified-group 5-fold, seed 42, ~1,557 train / ~390 test"
+    )
+    st.divider()
+    st.subheader("⚙️ Pipeline")
+    st.write(
+        "1_Data_Preparation → 2_Model_Training → 3_Evaluation_and_Stats → 4_Presentation_and_App\n\n"
+        "Preprocessing: URL/@ removal → emoji **encode/strip toggle** → lowercase → "
+        "repeat-char collapse → whitespace norm → ≥3-token + common-row guard."
+    )
+    st.divider()
+    st.caption("Labels: 0 = Neutral · 1 = Offensive · 2 = Hate Speech")
+
+tab1, tab2, tab3= st.tabs([
     "👉 Live Moderation Tool",
     "📊 Experimental Metrics",
     "⚖️ Statistical Significance",
-    "📄 Research Paper (PDF)",
 ])
 
 # ================= Tab 1: Live Moderation Tool =================
@@ -181,7 +262,7 @@ with tab1:
     else:
         st.info(
             f"XLM-RoBERTa checkpoint unavailable ({src}). "
-            "Demo fallback: TF-IDF + LogisticRegression trained on the same 1947 comments "
+            "Demo fallback: TF-IDF + LogisticRegression trained on the same 1,947 comments "
             "(notebook Cell 9 recipe, CPU). Re-run `train.py --save_model` to enable live XLM-R."
         )
         use_xlmr = False
@@ -210,14 +291,14 @@ with tab1:
             else:
                 models = load_tfidf_models()
                 if cond not in models:
-                    st.error(f"Demo model for {cond} not found. Check 1_Data_Preparation/data_processed/.")
+                    st.error("Demo model for this condition not found. Check 1_Data_Preparation/data_processed/.")
                     st.stop()
                 pipe = models[cond]
                 pred_id = STR2ID[str(pipe.predict([clean])[0])]
                 probs = [0.0, 0.0, 0.0]
                 for cls, pr in zip(pipe.classes_, pipe.predict_proba([clean])[0]):
                     probs[STR2ID[str(cls)]] = float(pr)
-            color = {0: "green", 1: "orange", 2: "red"}[pred_id]
+            color = LABEL_COLOR[pred_id]
             st.markdown(f"### Prediction: **{pred_id} = :{color}[{ID2LABEL[pred_id]}]** ({max(probs):.2%} confidence)")
             st.bar_chart(pd.DataFrame({"confidence": probs}, index=["0 Neutral", "1 Offensive", "2 Hate Speech"]))
             st.caption("Toggle the emoji mode and re-run: a changed prediction is the research effect, live.")
@@ -233,23 +314,41 @@ with tab2:
     base_pct = RESULTS["base_mean"] * 100
     prop_pct = RESULTS["prop_mean"] * 100
     gain_pp = (RESULTS["prop_mean"] - RESULTS["base_mean"]) * 100
+    m1, m2, m3 = st.columns(3)
+    m1.markdown(f"<div class='stat-card'><div class='v'>{base_pct:.2f}%</div><div class='l'>Baseline macro-F1 ±{RESULTS['base_std']*100:.2f}%</div></div>", unsafe_allow_html=True)
+    m2.markdown(f"<div class='stat-card'><div class='v'>{prop_pct:.2f}%</div><div class='l'>Proposed macro-F1 ±{RESULTS['prop_std']*100:.2f}%</div></div>", unsafe_allow_html=True)
+    m3.markdown(f"<div class='stat-card'><div class='v'>+{gain_pp:.2f}pp</div><div class='l'>Improvement · wins 5/5 folds</div></div>", unsafe_allow_html=True)
     st.table(pd.DataFrame({
-        "Model": ["Baseline (emoji stripped)", "Proposed (emoji → text)"],
+        "Model": ["XLM-R Baseline (emoji stripped)", "XLM-R Proposed (emoji → text)"],
         "Macro-F1": [f"{base_pct:.2f}%", f"{prop_pct:.2f}%"],
-        "Std. dev.": [f"±{RESULTS['base_std']*100:.2f}%", f"±{RESULTS['prop_std']*100:.2f}%"],
+        "Accuracy": [f"{RESULTS['base_acc']*100:.2f}%", f"{RESULTS['prop_acc']*100:.2f}%"],
+        "Macro AUC": [f"{RESULTS['base_auc']*100:.2f}%", f"{RESULTS['prop_auc']*100:.2f}%"],
     }))
-    st.success(f"Performance improvement: **+{gain_pp:.2f} percentage points** (Proposed wins 5/5 folds).")
+    st.success(f"Performance improvement: **+{gain_pp:.2f} percentage points** — the proposed input wins in every fold.")
+    st.subheader("Macro-F1 per fold")
     st.bar_chart(pd.DataFrame(
         {"Baseline": RESULTS["base_folds"], "Proposed": RESULTS["prop_folds"]},
         index=[f"Fold {i}" for i in range(1, 6)],
     ))
-    with st.expander("Per-fold macro-F1 values"):
-        st.dataframe(pd.DataFrame({
-            "Fold": [1, 2, 3, 4, 5],
-            "Baseline": RESULTS["base_folds"],
-            "Proposed": RESULTS["prop_folds"],
-            "Diff": [round(p - b, 4) for b, p in zip(RESULTS["base_folds"], RESULTS["prop_folds"])],
-        }), use_container_width=True)
+    st.subheader("Per-class F1 (hardest class highlighted)")
+    pc = RESULTS["per_class"]
+    st.dataframe(pd.DataFrame({
+        "Class": ["Neutral", "Offensive ⭐ hardest", "Hate"],
+        "Baseline F1": [pc["neutral"]["base_f1"], pc["offensive"]["base_f1"], pc["hate"]["base_f1"]],
+        "Proposed F1": [pc["neutral"]["prop_f1"], pc["offensive"]["prop_f1"], pc["hate"]["prop_f1"]],
+        "Gain": [pc["neutral"]["prop_f1"] - pc["neutral"]["base_f1"],
+                 pc["offensive"]["prop_f1"] - pc["offensive"]["base_f1"],
+                 pc["hate"]["prop_f1"] - pc["hate"]["base_f1"]],
+    }), use_container_width=True)
+    st.subheader("Summed confusion matrices (rows = true class)")
+    c1, c2 = st.columns(2)
+    for col, key, title in [(c1, "cm_no", "Baseline"), (c2, "cm_with", "Proposed")]:
+        cm = RESULTS[key]
+        totals = [sum(r) for r in cm]
+        disp = [[f"{v} ({v/t*100:.0f}%)" for v in row] for row, t in zip(cm, totals)]
+        col.write(f"**{title}**")
+        col.table(pd.DataFrame(disp, index=["true Neutral", "true Offensive", "true Hate"],
+                               columns=["pred Neutral", "pred Offensive", "pred Hate"]))
 
 # ================= Tab 3: Statistical Significance =================
 with tab3:
@@ -263,7 +362,7 @@ with tab3:
         st.success("Result is statistically significant at α = 0.05.")
     else:
         st.warning("Result is NOT statistically significant at α = 0.05 — this is expected (see below).")
-    st.subheader("Why p = 0.0625 is the mathematical limit here")
+    st.subheader("Why p = 0.0625 is the absolute mathematical limit here")
     st.write(
         "With only **n = 5** paired folds, the Wilcoxon test has 2⁵ = 32 possible sign assignments. "
         "The most extreme outcome — all 5 differences favouring the Proposed model, which is exactly "
@@ -273,35 +372,11 @@ with tab3:
         "the emoji-encoded model wins on **every single fold**, the strongest evidence this architecture "
         "can produce. A non-significant p here must not be misread as 'no effect'."
     )
+    st.subheader("Per-fold differences (all positive)")
+    st.dataframe(pd.DataFrame({
+        "Fold": [1, 2, 3, 4, 5],
+        "Baseline": RESULTS["base_folds"],
+        "Proposed": RESULTS["prop_folds"],
+        "Diff (+ favours Proposed)": [round(p - b, 4) for b, p in zip(RESULTS["base_folds"], RESULTS["prop_folds"])],
+    }), use_container_width=True)
 
-# ================= Tab 4: Research Paper (PDF) =================
-with tab4:
-    st.header("📄 Research Paper (PDF)")
-    paper_pdf = find_paper_pdf()
-    if paper_pdf is not None:
-        b64 = base64.b64encode(paper_pdf.read_bytes()).decode("utf-8")
-        st.markdown(
-            f'<embed src="data:application/pdf;base64,{b64}" type="application/pdf" '
-            f'width="100%" height="800px" />',
-            unsafe_allow_html=True,
-        )
-        st.download_button(
-            label="⬇️ Download research paper (PDF)",
-            data=paper_pdf.read_bytes(),
-            file_name=paper_pdf.name,
-            mime="application/pdf",
-        )
-    else:
-        st.warning(
-            "Compiled `paper.pdf` not found. Export it from Overleaf (`paper.tex` → Download PDF), "
-            "save it as `4_Presentation_and_App/paper.pdf`, and rerun — it will appear here automatically."
-        )
-        st.subheader("Supporting documents available now")
-        for doc in sorted(APP_DIR.glob("*.pdf")):
-            st.download_button(
-                label=f"⬇️ Download {doc.name}",
-                data=doc.read_bytes(),
-                file_name=doc.name,
-                mime="application/pdf",
-                key=f"dl_{doc.name}",
-            )
