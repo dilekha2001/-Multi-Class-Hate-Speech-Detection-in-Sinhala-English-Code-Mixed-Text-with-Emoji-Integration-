@@ -1,0 +1,8 @@
+{
+  "raw_rows": 2419,
+  "null_dropped": 3,
+  "empty_after_cleaning": 15,
+  "conflicting_label_rows_dropped": 87,
+  "duplicates_dropped": 105,
+  "final_rows": 2210
+}

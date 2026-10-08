@@ -1,0 +1,538 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{cite}
+\usepackage{xcolor}
+
+% ---------------------------------------------------------------
+% TODO markers: search for "TODO" throughout this file.
+% Every TODO marks content that MUST be filled from your real
+% results once training on real/annotated data is complete.
+% Do NOT submit with any TODO still in the text.
+% ---------------------------------------------------------------
+
+\begin{document}
+
+\title{Multi-Class Hate Speech Detection in Sinhala-English Code-Mixed
+Social Media Text with Emoji Feature Integration Using XLM-RoBERTa}
+
+\author{H.D. Nethmini Hakmanage, A. Senuri Kodithuwakku
+\thanks{H.D. Nethmini Hakmanage and A. Senuri Kodithuwakku are with the
+Faculty of Information Technology, Horizon Campus, Sri Lanka.}}
+
+\markboth{IEEE Access}{Hakmanage \MakeLowercase{\textit{et al.}}: Multi-Class Hate Speech Detection in Sinhala-English Code-Mixed Text}
+
+\maketitle
+
+\begin{abstract}
+Hate speech detection in low-resource, code-mixed languages remains an
+open challenge, particularly for Sinhala-English social media text where
+prior work has been limited to binary classification, has discarded
+emoji information during preprocessing, and has been restricted to a
+single platform. We address these three gaps by fine-tuning
+XLM-RoBERTa-base for three-class classification (hate, offensive,
+neutral) on Sinhala-English code-mixed comments collected from Facebook
+and YouTube, comparing a baseline model against a proposed model that
+encodes emoji as textual sentiment cues. % TODO: extend abstract with
+% one-sentence summary of your actual quantitative result once available,
+% e.g. "The proposed model achieved a macro-F1 of X.XX (+/- X.XX),
+% compared to X.XX for the baseline (Wilcoxon p = X.XX)."
+We describe our data collection, annotation, and evaluation methodology
+in detail, including a rigorous data-quality audit process, and report
+our findings with an explicit discussion of the failure modes and
+limitations encountered.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Hate speech detection, code-mixed text, Sinhala-English, XLM-RoBERTa,
+emoji features, low-resource NLP, social media.
+\end{IEEEkeywords}
+
+\section{Introduction}
+
+With the growing popularity of social media, hate speech detection in
+low-resource languages has emerged as an urgent research problem. In Sri
+Lanka, Facebook and YouTube provide large volumes of user-generated,
+code-mixed Sinhala text written in Roman characters interspersed with
+English. Muthuthanthri and Smith \cite{muthuthanthri2024} built an
+initial baseline dataset of 2,205 labelled Sinhala-English Facebook
+comments and evaluated nineteen machine learning algorithms for hate
+versus non-hate classification, with BERT achieving 82\% accuracy and a
+90\% ROC-AUC. Liyanage and Jayakumar \cite{liyanage2021} similarly
+observed a performance ceiling for classical machine learning models on
+Romanised Sinhala text, and Hettiarachchi et al. \cite{hettiarachchi2020}
+confirmed that pre-trained embeddings outperform bag-of-words
+representations for this task.
+
+Muthuthanthri and Smith \cite{muthuthanthri2024} explicitly identified
+three limitations for future work: integrating emoji and symbol
+information into detection models, developing methods to counter
+symbol-based evasion, and extending data collection beyond Facebook to
+other platforms such as YouTube. To our knowledge, no subsequent study
+of Sinhala-English code-mixed hate speech has addressed these three gaps
+together. This paper makes the following contributions:
+
+\begin{itemize}
+\item We extend the classification scheme from binary (hate / not-hate)
+to a three-class taxonomy (hate, offensive, neutral) following Davidson
+et al. \cite{davidson2017}, distinguishing targeted hate speech from
+general offensive language that is not directed at an identity group.
+\item We integrate emoji information as an explicit input feature via
+Unicode-to-text description encoding, rather than discarding it during
+preprocessing as in \cite{muthuthanthri2024}.
+\item We collect data across two platforms (Facebook and YouTube)
+rather than a single platform, following the cross-platform
+generalisation argument supported by Vasantharajan and Thayasivam
+\cite{vasantharajan2022}.
+\end{itemize}
+
+Our research question is: \textit{does fine-tuning XLM-RoBERTa with
+emoji encoding lead to a statistically significant improvement in
+macro-averaged F1-score over a fine-tuned XLM-RoBERTa baseline without
+emoji encoding, on three-class Sinhala-English code-mixed data from
+Facebook and YouTube, evaluated across five stratified folds?} This
+question is falsifiable: if emoji features introduce noise, cause
+overfitting on the minority class, or fail to produce a significant
+macro-F1 improvement, the hypothesis is disproved.
+
+The remainder of this paper is organised as follows. Section II reviews
+related work in Sinhala and code-mixed hate speech detection and
+multilingual Transformer models. Section III describes our data
+collection, annotation, preprocessing, and model architecture in detail.
+Section IV reports our results across both experimental conditions.
+Section V discusses these results, including a dedicated failure
+analysis and ethical reflection. Section VI concludes with our
+contributions in light of the results and directions for future work.
+
+% TODO: This section may need a closing paragraph summarising your
+% actual finding once real results are available, to preview the paper's
+% conclusion for the reader (standard IMRaD practice).
+
+\section{Related Work}
+
+Early classical machine learning approaches to Sinhala and Singlish hate
+speech detection established meaningful but limited baselines.
+Hettiarachchi et al. \cite{hettiarachchi2020} and Liyanage and Jayakumar
+\cite{liyanage2021} both found that ensemble classifiers over
+hand-crafted features plateau around 84\% accuracy on Romanised Sinhala
+text, with no transformer-based methods explored in either study.
+Fernando et al. \cite{fernando2022} showed that FastText combined with
+RNNs achieves strong AUC-ROC on Sinhala social media text, motivating the
+move toward learned embeddings over classical features.
+
+Muthuthanthri and Smith \cite{muthuthanthri2024} remain the closest prior
+work to ours: a Facebook-only, binary-labelled dataset evaluated with
+BERT, explicitly excluding emoji from the input. Davidson et al.
+\cite{davidson2017} demonstrated, in the (monolingual) hate speech
+literature more broadly, that collapsing hate and offensive speech into
+a single category measurably reduces classifier accuracy, motivating our
+adoption of their three-class taxonomy. Sap et al. \cite{sap2019} showed
+that hate speech classifiers trained on majority-dialect data
+systematically misclassify minority-dialect text, which directly informs
+our ethical considerations regarding potential bias against Tamil and
+Muslim community speech in the Sri Lankan context.
+
+On the modelling side, Conneau et al. \cite{conneau2020} introduced
+XLM-RoBERTa, pretrained on 2.5TB of multilingual Common Crawl data across
+100 languages, and Vasantharajan and Thayasivam \cite{vasantharajan2022}
+demonstrated its superiority over BERT and SVM baselines on the
+linguistically similar task of Tamil-English code-mixed YouTube comment
+classification -- directly motivating both our choice of XLM-RoBERTa and
+our inclusion of YouTube as a data source. Mozafari et al.
+\cite{mozafari2020} further showed that models pretrained on web-crawled
+text outperform those trained on curated corpora for social media
+classification tasks, reinforcing the choice of XLM-RoBERTa (Common
+Crawl-pretrained) over standard BERT. Barbieri et al. \cite{barbieri2020}
+established macro-F1 as the standard metric for imbalanced multi-class
+tweet classification benchmarks, which we adopt as our primary metric.
+
+Across this body of work, the most advanced prior Sinhala-English
+system -- Muthuthanthri and Smith \cite{muthuthanthri2024} -- remains
+constrained to binary classification, discards emoji during
+preprocessing, and draws from a single platform. No subsequent study
+combines a three-class taxonomy, emoji-aware input encoding, and
+cross-platform data collection for this language pair; this is the
+specific, compound gap our work addresses.
+
+\section{Methodology}
+
+\subsection{Data Collection}
+
+Data was collected from two social media platforms: Facebook, via the
+Facepager tool interfacing with the Facebook Graph API, and YouTube, via
+the YouTube Data API v3. % TODO: replace this sentence with an accurate
+% description of what was ACTUALLY collected for your final results --
+% e.g. if Facebook collection was not completed due to Meta's Graph API
+% access restrictions (a documented, legitimate constraint -- see
+% Section~\ref{sec:limitations}), state that plainly here rather than
+% implying both platforms were used if only YouTube data was used.
+Collection targeted public comment threads on political, religious, and
+news-related content between % TODO: insert your actual collection date
+% range %, expected to yield high-volume code-mixed Sinhala-English
+commentary. Only publicly available posts and comments were collected;
+private groups, individual pages, and direct messages were excluded.
+
+\subsection{Annotation}
+% TODO: replace this paragraph with your ACTUAL annotation process. If
+% you used 2 annotators with an agreement-based (rather than 3-annotator
+% majority-vote) protocol due to time constraints, say so explicitly --
+% this is a legitimate, documented methodological choice, not something
+% to obscure.
+
+Each collected comment was independently labelled following a written
+annotation guideline defining three classes -- hate speech, offensive
+language, and neutral content -- with worked examples drawn from prior
+literature \cite{muthuthanthri2024,davidson2017}. % TODO: state your
+% actual number of annotators and reconciliation method here, and report
+% your actual inter-annotator agreement statistic (Cohen's Kappa for 3+
+% annotators, or percent agreement / Cohen's Kappa for 2 annotators).
+
+\subsection{Preprocessing}
+
+Comments were preprocessed via URL removal, username/mention removal,
+emoji extraction and encoding (or removal, for the baseline condition),
+lowercasing of English tokens, repeated-character normalisation, and
+whitespace normalisation, with a minimum length filter of three tokens
+applied after preprocessing. Emoji were converted to their Unicode text
+description (e.g. an angry-face emoji becomes the text ``angry face'')
+using the
+Python \texttt{emoji} library and appended inline to the comment text,
+allowing the model to learn emoji meaning jointly with surrounding
+context rather than treating it as noise.
+
+\subsection{Data Quality Audit}
+\label{sec:audit}
+
+Prior to model training, the annotated corpus was audited for exact and
+near-duplicate content using core-text clustering (filler-word and
+emoji-stripped normalisation followed by exact and TF-IDF-based
+near-duplicate grouping). % TODO: report your actual final dataset's
+% audit statistics here -- number of rows, number of distinct core
+% clusters, duplicate/near-duplicate rate. This audit step is a genuine
+% methodological strength if your final dataset passes it cleanly;
+% report it honestly either way.
+This step is critical for any code-mixed social-media hate speech
+corpus, particularly given the risk that near-duplicate or templated
+content can trivially inflate held-out performance metrics through
+train/test leakage rather than genuine model generalisation -- a failure
+mode we discuss in detail in Section~\ref{sec:failure-analysis}.
+
+\subsection{Model Architecture}
+
+The system fine-tunes XLM-RoBERTa-base \cite{conneau2020} for three-class
+sequence classification. The only architectural difference between the
+baseline and proposed conditions is the emoji-handling step in
+preprocessing (Section III-C): the baseline strips emoji entirely,
+matching the approach of \cite{muthuthanthri2024}, while the proposed
+model encodes emoji as appended text tokens. All other architectural and
+training choices are held constant across both conditions so that any
+observed difference in macro-F1 can be attributed specifically to emoji
+handling. Table~\ref{tab:training-config} summarises the training
+configuration.
+
+\begin{table}[h]
+\centering
+\caption{Training Configuration}
+\label{tab:training-config}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Parameter & Value \\
+\midrule
+Base model & xlm-roberta-base \\
+Max sequence length & 128 tokens \\
+Optimiser & AdamW \\
+Learning rate & 2e-5 \\
+Dropout & 0.1 \\
+Class weighting & Inverse-frequency balanced \\
+Early stopping & Validation-loss based, patience 2 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Class-weighted cross-entropy loss was used to address label imbalance,
+with weights computed as the inverse frequency of each class in the
+training fold. AdamW was selected over standard SGD because it decouples
+weight decay from the gradient update, which has been shown to improve
+generalisation when fine-tuning large pretrained Transformer models
+\cite{conneau2020}; a learning rate of 2e-5 follows the range
+established as effective for fine-tuning BERT-family models on
+downstream classification tasks. XLM-RoBERTa was chosen over a
+convolutional or recurrent architecture because the task requires
+transferring pretrained multilingual representations to a low-resource,
+code-mixed setting with limited labelled data -- a setting where
+Transformer-based transfer learning has been shown to substantially
+outperform architectures trained from scratch on code-mixed South Asian
+language data \cite{vasantharajan2022,mozafari2020}.
+
+\subsection{System Architecture}
+
+Figure~\ref{fig:architecture} shows the end-to-end pipeline: raw
+platform data is collected, annotated by independent human raters,
+passed through the preprocessing pipeline described above, tokenised,
+and fed to the fine-tuned XLM-RoBERTa classifier, which outputs a
+three-class softmax distribution over \{neutral, offensive, hate\}.
+
+\begin{figure}[h]
+\centering
+% TODO: insert your actual system architecture diagram image here, e.g.:
+% \includegraphics[width=0.9\linewidth]{system_architecture.png}
+\fbox{\parbox{0.85\linewidth}{\centering\vspace{1em}
+Facebook + YouTube $\rightarrow$ Raw Corpus $\rightarrow$ Annotation +
+Preprocessing $\rightarrow$ Feature Extraction $\rightarrow$
+XLM-RoBERTa-base $\rightarrow$ Output Classification $\rightarrow$
+Evaluation\vspace{1em}}}
+\caption{End-to-end system architecture for multi-class Sinhala-English
+code-mixed hate speech detection with emoji feature integration.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Baseline Definition}
+
+The baseline is an XLM-RoBERTa-base model trained identically to the
+proposed model in every respect except that emoji are stripped from the
+input rather than encoded. This isolates emoji handling as the sole
+experimental variable, allowing any difference in macro-F1 between the
+two conditions to be attributed specifically to emoji information.
+
+\subsection{Evaluation Protocol}
+
+Macro-averaged F1-score is the primary evaluation metric, selected
+because it weights all three classes equally regardless of frequency --
+appropriate given the class imbalance in hate speech corpora, where
+accuracy is a misleading metric \cite{muthuthanthri2024}, and consistent
+with its use as the standard metric for imbalanced multi-class tweet
+classification \cite{barbieri2020}. Secondary metrics include per-class
+precision, recall, and F1, macro-averaged AUC-ROC, and confusion
+matrices for failure analysis. Evaluation uses stratified $k$-fold cross-validation ($k=5$) rather than
+a single fixed train/validation/test split, because with a target corpus
+of approximately 2,500 comments a single split would leave only
+approximately 375 comments for testing -- too few to yield a stable
+per-class F1 estimate given the three-way class imbalance. Five-fold
+cross-validation instead produces five independent test estimates,
+allowing performance to be reported as a mean and standard deviation
+that reflects genuine variability rather than the outcome of one
+arbitrary split, with stratification ensuring the class distribution is
+preserved in every fold. % TODO: state your actual k-fold value
+% (5-fold as originally planned, or fewer if adjusted for a smaller
+% real dataset) and confirm stratification / leakage-safety approach.
+The identical fold assignment is reused for both the baseline and
+proposed conditions to enable a paired statistical comparison. Statistical significance between
+the two conditions' per-fold macro-F1 scores is assessed using the
+Wilcoxon signed-rank test, chosen over a paired $t$-test because it does
+not assume normally distributed differences, which is appropriate given
+the small number of paired observations.
+
+\section{Results}
+\label{sec:results}
+
+% TODO: THIS ENTIRE SECTION MUST BE REPLACED WITH YOUR REAL RESULTS.
+% Do not submit with placeholder text below. Structure to follow:
+%   - Table of mean +/- std macro-F1 for baseline vs proposed, per fold
+%   - Per-class precision/recall/F1 table
+%   - Confusion matrices (both conditions)
+%   - Wilcoxon test statistic and p-value, with the n=5 (or n=k) low
+%     statistical power caveat stated explicitly
+% Example table structure (replace values):
+
+\begin{table}[h]
+\centering
+\caption{Macro-F1 by Condition (TODO: replace with real values)}
+\label{tab:results}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Condition & Mean Macro-F1 & Std. Dev. \\
+\midrule
+Baseline (no emoji) & TODO & TODO \\
+Proposed (with emoji) & TODO & TODO \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{TODO:} Report the Wilcoxon signed-rank test result here (W
+statistic, $p$-value, and whether $p < 0.05$), and state plainly if the
+result is not statistically significant -- this is a valid, falsifiable
+outcome per the research question in Section I, not a result to hide or
+obscure.
+
+\section{Discussion}
+
+\subsection{Failure Analysis}
+\label{sec:failure-analysis}
+
+% TODO: THIS SUBSECTION IS REQUIRED BY THE MILESTONE 4 RUBRIC AND MUST
+% BE WRITTEN FROM YOUR ACTUAL CONFUSION MATRICES AND MISCLASSIFIED
+% EXAMPLES. Pull 10-15 real misclassified comments (both directions:
+% hate misclassified as offensive/neutral, and vice versa) and discuss
+% what linguistic or contextual features likely caused the error.
+% Since the primary social harm from a real deployed system comes from
+% false negatives on the hate class, prioritise discussing hate-class
+% recall failures specifically.
+
+During development, a critical failure mode was identified and is worth
+reporting transparently as part of this paper's methodological
+contribution: an initial dataset later found to contain templated,
+near-duplicate content (Section~\ref{sec:audit}) produced a macro-F1 of
+1.0000 across every cross-validation fold, for both the baseline and
+proposed conditions, with zero measurable difference between them. This
+was diagnosed, not merely observed: a trivial bag-of-words logistic
+regression model, entirely incapable of contextual language
+understanding, achieved the identical ceiling score on the same data,
+confirming that the near-perfect performance reflected the dataset's
+narrow, near-deterministic per-class vocabulary rather than genuine
+model competence. This finding is reported here as a methodological
+caution for future Sinhala-English code-mixed hate speech research: near-
+duplicate and template-generated content -- whether from data
+augmentation or from repetitive real-world posting patterns -- can
+silently invalidate cross-validation estimates unless explicitly audited
+for, and macro-F1 alone, without a duplication/leakage audit, is
+insufficient evidence of genuine classifier competence.
+
+% TODO: follow the above with failure analysis of your REAL model's
+% REAL errors once available.
+
+\subsection{Ethical Reflection}
+\label{sec:ethics}
+
+This research handles sensitive content directly implicating protected
+and marginalised communities in Sri Lanka, including Tamil and Muslim
+minorities historically targeted during periods of communal unrest.
+Several ethical safeguards were built into the methodology from the
+outset. All data collection was restricted to publicly available posts
+and comments; private accounts, groups, and direct messages were
+excluded entirely. User identifiers -- names, profile URLs, and
+usernames -- were stripped prior to annotation and are not present in
+the final dataset, consistent with data minimisation principles.
+Annotators were informed of the potential psychological effects of
+prolonged exposure to hateful and offensive content and advised to limit
+annotation sessions to 30 minutes at a time.
+
+A specific bias risk, documented by Sap et al. \cite{sap2019}, is that
+hate speech classifiers trained predominantly on majority-dialect data
+can systematically misclassify minority-dialect or minority-community
+speech -- for example, flagging in-group reclaimed language or
+minority-community political speech as hate speech at disproportionate
+rates. Clear annotation guidelines defining each class with worked
+examples were used specifically to reduce annotator subjectivity and
+mitigate bias against minority-community speech, though this risk cannot
+be eliminated through guidelines alone and would require targeted
+fairness auditing (e.g., per-community false-positive-rate analysis) as
+future work before any real-world deployment.
+
+Finally, the Online Safety Act No. 9 of 2023 (Sri Lanka) creates a
+regulatory context in which automated content moderation tools for
+code-mixed Sinhala-English text may see real-world deployment; the
+authors caution against deploying any model resulting from this research
+in a production content-moderation context without further fairness
+auditing, human-in-the-loop review of flagged content, and an appeals
+mechanism for affected users, given the demonstrated risk of
+disproportionate impact on minority communities.
+
+\subsection{Limitations}
+\label{sec:limitations}
+
+% TODO: state your ACTUAL final limitations honestly. Likely candidates
+% based on this project's development process, to keep IF true of your
+% final submission, or remove if not:
+\begin{itemize}
+\item Facebook data collection was constrained by Meta's post-2018
+Graph API access policy, which requires Page-admin access or App Review
+for comment-level data beyond a developer's own pages; % TODO: state
+% whether this meant Facebook data was reduced in volume, excluded
+% entirely, or obtained through an alternative access path.
+\item The final annotated dataset size ( % TODO: insert real N %) is
+smaller than the original target of 2,500 comments, reflecting the time
+constraints of a single-semester capstone project; this limits the
+statistical power of the five-fold cross-validation design, particularly
+for the Wilcoxon signed-rank test (with $k=5$ paired folds, the smallest
+achievable two-sided $p$-value is 0.0625, meaning even a consistent
+effect across all folds may not reach conventional significance);
+\item % TODO: if annotation used 2 raters with an agreement-filter
+% protocol rather than the originally planned 3-annotator majority-vote
+% with Cohen's Kappa >= 0.70, state this explicitly here as a scope
+% reduction under time constraints.
+\end{itemize}
+
+\section{Conclusion}
+
+% TODO: replace with your actual conclusion once results are final.
+This paper presented a methodology for multi-class Sinhala-English
+code-mixed hate speech detection with emoji feature integration,
+addressing three gaps identified in prior work: binary-only
+classification, emoji removal during preprocessing, and single-platform
+data collection. % TODO: state your actual finding regarding the
+% research question, and its implication for future emoji-aware,
+% code-mixed hate speech detection research.
+
+\section*{Acknowledgment}
+The authors thank % TODO: module coordinator name / volunteer annotator
+% name, with permission % for their contributions to this project.
+
+\begin{thebibliography}{00}
+
+\bibitem{muthuthanthri2024} M. Muthuthanthri and R. I. Smith, ``Hate
+Speech Detection for Transliterated English and Sinhala Code-Mixed
+Data,'' in \textit{Proc. ICARC}, 2024, pp. 155--160.
+
+\bibitem{liyanage2021} O. Liyanage and K. Jayakumar, ``Hate Speech
+Detection in Sinhala-English Code-Mixed Language,'' in \textit{Proc.
+ICTer}, 2021, pp. 225--230.
+
+\bibitem{hettiarachchi2020} N. Hettiarachchi, R. Weerasinghe, and R.
+Pushpanda, ``Detecting Hate Speech in Romanized Sinhala,'' in
+\textit{Proc. ICTer}, 2020, pp. 250--255.
+
+\bibitem{fernando2022} W. S. S. Fernando, R. Weerasinghe, and E. R. A. D.
+Bandara, ``Sinhala Hate Speech Detection Using Machine Learning and Deep
+Learning,'' in \textit{Proc. ICTer}, 2022, pp. 166--171.
+
+\bibitem{davidson2017} T. Davidson, D. Warmsley, M. Macy, and I. Weber,
+``Automated Hate Speech Detection and the Problem of Offensive
+Language,'' in \textit{Proc. ICWSM}, vol. 11, 2017, pp. 512--515.
+
+\bibitem{vasantharajan2022} C. Vasantharajan and U. Thayasivam, ``Towards
+Offensive Language Identification for Tamil Code-Mixed YouTube
+Comments,'' \textit{SN Comput. Sci.}, vol. 3, p. 94, 2022.
+
+\bibitem{conneau2020} A. Conneau \textit{et al.}, ``Unsupervised
+Cross-Lingual Representation Learning at Scale,'' in \textit{Proc. ACL},
+2020, pp. 8440--8451.
+
+\bibitem{meedin2022} N. Meedin, M. Caldera, S. Perera, and I. Perera, ``A
+Novel Annotation Scheme to Generate Hate Speech Corpus through
+Crowdsourcing and Active Learning,'' \textit{Int. J. Adv. Comput. Sci.
+Appl.}, vol. 13, 2022.
+
+\bibitem{rathnayake2022} H. Rathnayake, J. Sumanapala, R. Rukshani, and
+S. Ranathunga, ``Adapter-Based Fine-Tuning of Pre-Trained Multilingual
+Language Models for Code-Mixed Text Classification,'' \textit{Knowl.
+Inf. Syst.}, vol. 64, pp. 1937--1966, 2022.
+
+\bibitem{munasinghe2022} S. Munasinghe and U. Thayasivam, ``A Deep
+Learning Ensemble Hate Speech Detection Approach for Sinhala Tweets,''
+in \textit{Proc. MERCon}, 2022, pp. 1--6.
+
+\bibitem{mozafari2020} M. Mozafari, R. Farahbakhsh, and N. Crespi, ``A
+BERT-Based Transfer Learning Approach for Hate Speech Detection in
+Online Social Media,'' in \textit{Proc. Complex Networks VIII},
+Springer, 2020, pp. 928--940.
+
+\bibitem{barbieri2020} F. Barbieri, J. Camacho-Collados, L.
+Espinosa-Anke, and L. Neves, ``TweetEval: Unified Benchmark and
+Comparative Evaluation for Tweet Classification,'' in \textit{Proc.
+EMNLP Findings}, 2020, pp. 1644--1650.
+
+\bibitem{qureshi2021} K. A. Qureshi and M. Sabih, ``Un-Compromised
+Credibility: Social Media Based Multi-Class Hate Speech Classification
+for Text,'' \textit{IEEE Access}, vol. 9, pp. 109465--109477, 2021.
+
+\bibitem{sap2019} M. Sap, D. Card, S. Gabriel, Y. Choi, and N. A. Smith,
+``The Risk of Racial Bias in Hate Speech Detection,'' in \textit{Proc.
+ACL}, 2019, pp. 1668--1678.
+
+\end{thebibliography}
+
+\end{document}

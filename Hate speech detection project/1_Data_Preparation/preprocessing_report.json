@@ -1,0 +1,28 @@
+{
+  "input_rows": 2210,
+  "label_distribution": {
+    "neutral": 977,
+    "offensive": 640,
+    "hate": 593
+  },
+  "with_emoji": {
+    "emoji_mode": "encode",
+    "rows_before_min_length_filter": 2210,
+    "rows_after_min_length_filter": 2037,
+    "rows_dropped": 173,
+    "drop_rate_pct": 7.83
+  },
+  "no_emoji": {
+    "emoji_mode": "strip",
+    "rows_before_min_length_filter": 2210,
+    "rows_after_min_length_filter": 1948,
+    "rows_dropped": 262,
+    "drop_rate_pct": 11.86
+  },
+  "common_rows_after_guard": 1947,
+  "rows_removed_by_common_row_guard": {
+    "with_emoji_only_passed": 90,
+    "no_emoji_only_passed": 1
+  },
+  "pct_rows_le_128_tokens": 99.95
+}
