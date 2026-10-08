@@ -1,6 +1,6 @@
 # Multi-Class Hate Speech Detection in Sinhala-English Code-Mixed Text with Emoji Integration (XLM-RoBERTa)
 
-Hate speech Detection - self-contained runnable copy. Copy this folder anywhere and it runs with zero outside paths.
+Hate speech detection project - self-contained runnable copy. Copy this folder anywhere and it runs with zero outside paths.
 
 IT41043 Intelligent Systems - Horizon Campus. Research question: does encoding emoji as text improve
 macro-F1 of fine-tuned XLM-RoBERTa on three-class (neutral / offensive / hate) Facebook + YouTube comments?
@@ -110,4 +110,4 @@ Expect: `common_rows_after_guard 1947`, both CSVs same `comment_id` order, folds
   this; `train.py` also asserts it). Without this, `folds.json` would misalign the two conditions.
 - With 5 paired folds the smallest possible two-sided Wilcoxon p-value is 0.0625, so p < 0.05 cannot be reached.
   Report this limitation and the per-fold consistency of the effect.
-- Gemmbi `app.py` uses only inside-Gemmbi paths plus verified fallback constants, so the folder is portable.
+- Hate speech detection project `app.py` uses only inside-Gemmbi paths plus verified fallback constants, so the folder is portable.
