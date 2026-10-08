@@ -1,5 +1,5 @@
 """
-Hate Speech Detection - Streamlit Demo Dashboard (Gemmbi)
+Hate Speech Detection - Streamlit Demo Dashboard (Hate speech detection project)
 
 Sinhala-English code-mixed hate speech detection with emoji integration (XLM-RoBERTa).
 4 navigation tabs for examiner review:
@@ -8,7 +8,7 @@ Sinhala-English code-mixed hate speech detection with emoji integration (XLM-RoB
  3. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
  4. Research Paper (PDF)     - embedded paper viewer (800px) + download button
 
-Run from Gemmbi root:  streamlit run 4_Presentation_and_App/app.py
+Run from Hate speech detection project root:  streamlit run 4_Presentation_and_App/app.py
 """
 import base64
 import json
@@ -18,8 +18,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Self-contained paths: everything resolves inside Gemmbi/ - no outside roots.
-# Copy Gemmbi/ anywhere and the app still runs (verified fallback constants cover missing files).
+# Self-contained paths: everything resolves inside Hate speech detection project/ - no outside roots.
+# Copy Hate speech detection project/ anywhere and the app still runs (verified fallback constants cover missing files).
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 PREP_DIR = ROOT / "1_Data_Preparation"
@@ -379,4 +379,3 @@ with tab3:
         "Proposed": RESULTS["prop_folds"],
         "Diff (+ favours Proposed)": [round(p - b, 4) for b, p in zip(RESULTS["base_folds"], RESULTS["prop_folds"])],
     }), use_container_width=True)
-

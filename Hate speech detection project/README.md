@@ -53,7 +53,7 @@ or `pip install --user`. A `python3 -m venv` needs `sudo apt install python3.14-
     summary/summary_metrics.csv, summary_metrics_full.json, wilcoxon_result.json
   summary_metrics.csv                   copy of the headline table for quick reference
 4_Presentation_and_App/
-  app.py                                Streamlit 3-tab dashboard (portable: only Gemmbi/ paths)
+  app.py                                Streamlit 3-tab dashboard (portable: only Hate speech detection project/ paths)
   paper.tex + cover + dissemination plan (IEEE Access submission)
   2 report PDFs                         proposal + methodology (background)
 run_full_pipeline.ipynb          Colab notebook Cells 1-10: train both models, evaluate, Wilcoxon, TF-IDF, zip
@@ -83,9 +83,9 @@ run Cells 1-10 one-by-one top to bottom with single Play (not Run all):
 Cell 1 GPU True, Cell 2 Drive OUTDIR (must be empty for fresh run), Cell 3 upload+extract,
 Cell 4 must print `OK - 1947 rows`, Cell 5 install, Cell 6 baseline (~1.5h), Cell 7 proposed (~1.5h),
 Cell 8 must show `5/5 True` both + table above, Cell 9 TF-IDF reference, Cell 10 downloads
-`outputs_final.zip`. Unzip it into `Gemmbi/outputs_final/` to refresh local proof.
+`outputs_final.zip`. Unzip it into `Hate speech detection project/outputs_final/` to refresh local proof.
 
-## Rebuild the data from scratch (CPU, local, from Gemmbi root)
+## Rebuild the data from scratch (CPU, local, from Hate speech detection project root)
 
 ```
 pip install --break-system-packages emoji pandas scikit-learn
@@ -110,4 +110,4 @@ Expect: `common_rows_after_guard 1947`, both CSVs same `comment_id` order, folds
   this; `train.py` also asserts it). Without this, `folds.json` would misalign the two conditions.
 - With 5 paired folds the smallest possible two-sided Wilcoxon p-value is 0.0625, so p < 0.05 cannot be reached.
   Report this limitation and the per-fold consistency of the effect.
-- Hate speech detection project `app.py` uses only inside-Gemmbi paths plus verified fallback constants, so the folder is portable.
+- Hate speech detection project `app.py` uses only inside-Hate speech detection project paths plus verified fallback constants, so the folder is portable.
