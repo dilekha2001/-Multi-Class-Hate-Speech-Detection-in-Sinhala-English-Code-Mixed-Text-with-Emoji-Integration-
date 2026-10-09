@@ -1,6 +1,6 @@
 # Multi-Class Hate Speech Detection in Sinhala-English Code-Mixed Text with Emoji Integration (XLM-RoBERTa)
 
-Hate speech detection project - self-contained runnable copy. Copy this folder anywhere and it runs with zero outside paths.
+
 
 IT41043 Intelligent Systems - Horizon Campus. Research question: does encoding emoji as text improve
 macro-F1 of fine-tuned XLM-RoBERTa on three-class (neutral / offensive / hate) Facebook + YouTube comments?
