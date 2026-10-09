@@ -2,13 +2,13 @@
 Hate Speech Detection - Streamlit Demo Dashboard (Gemmbi)
 
 Sinhala-English code-mixed hate speech detection with emoji integration (XLM-RoBERTa).
-4 navigation tabs for examiner review:
+3 navigation tabs for examiner review:
  1. Live Moderation Tool    - predict code-mixed comments (0=Neutral, 1=Offensive, 2=Hate Speech)
  2. Experimental Metrics     - Baseline vs Proposed macro-F1 comparison (+9.50pp)
  3. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
- 4. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
 
-Run from Gemmbi root:  streamlit run 4_Presentation_and_App/app.py
+Run from project root:  streamlit run "4_Presentation_and_App/app.py"
+   (or from repo root: streamlit run "Hate speech detection project/4_Presentation_and_App/app.py")
 """
 import json
 import sys
@@ -18,8 +18,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Self-contained paths: everything resolves inside Gemmbi/ - no outside roots.
-# Copy Gemmbi/ anywhere and the app still runs (verified fallback constants cover missing files).
+# Self-contained paths: everything resolves inside the project root - no outside roots.
+# Copy the project folder anywhere and the app still runs (verified fallback constants cover missing files).
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 PREP_DIR = ROOT / "1_Data_Preparation"
@@ -27,6 +27,14 @@ EVAL_DIR = ROOT / "3_Evaluation_and_Stats"
 OUT_DIR = EVAL_DIR / "outputs_final"
 SUMMARY_DIR = OUT_DIR / "summary"
 DATA_PROCESSED = PREP_DIR / "data_processed"
+
+
+def _first_existing(*candidates: Path):
+    """Return the first path that exists, or None if none exist."""
+    for c in candidates:
+        if c and c.exists():
+            return c
+    return None
 
 if str(PREP_DIR) not in sys.path:
     sys.path.insert(0, str(PREP_DIR))
@@ -84,7 +92,12 @@ def load_tfidf_models():
 
 @st.cache_resource(show_spinner="Looking for XLM-RoBERTa checkpoints...")
 def load_xlmr():
-    """Best-fold XLM-R checkpoint from 3_Evaluation_and_Stats/outputs_final/.
+    """Best-fold XLM-R checkpoint under 3_Evaluation_and_Stats/.
+
+    Searched locations (first hit wins):
+      - outputs_final/with_emoji/all_folds_metrics.json  (train.py default)
+      - with_emoji/all_folds_metrics.json                (flat layout)
+      - EVAL_DIR/all_folds_metrics.json
 
     Returns (tokenizer, model, device, fold_no, source) or (None, None, None, None, reason).
     train.py was run without --save_model, so weights are normally absent and the
@@ -96,23 +109,40 @@ def load_xlmr():
     except Exception as e:
         return None, None, None, None, f"torch/transformers not installed ({e})"
 
+    folds_file = _first_existing(
+        OUT_DIR / "with_emoji" / "all_folds_metrics.json",
+        EVAL_DIR / "with_emoji" / "all_folds_metrics.json",
+        EVAL_DIR / "all_folds_metrics.json",
+    )
     try:
-        folds = json.loads((OUT_DIR / "with_emoji" / "all_folds_metrics.json").read_text(encoding="utf-8"))
-        fold_no = int(max(folds, key=lambda m: m["macro_f1"])["fold"])
+        folds = json.loads(folds_file.read_text(encoding="utf-8")) if folds_file else None
+        fold_no = int(max(folds, key=lambda m: m["macro_f1"])["fold"]) if folds else 1
     except Exception:
         fold_no = 1
-    model_dir = OUT_DIR / "with_emoji" / f"fold_{fold_no}" / "model"
+    model_dir = _first_existing(
+        OUT_DIR / "with_emoji" / f"fold_{fold_no}" / "model",
+        EVAL_DIR / "with_emoji" / f"fold_{fold_no}" / "model",
+        EVAL_DIR / f"fold_{fold_no}" / "model",
+    ) or (OUT_DIR / "with_emoji" / f"fold_{fold_no}" / "model")
     weights = list(model_dir.glob("*.bin")) + list(model_dir.glob("*.safetensors"))
     if not (model_dir / "config.json").exists() or not weights:
+        try:
+            rel = model_dir.relative_to(ROOT)
+        except ValueError:
+            rel = model_dir
         return None, None, None, None, (
-            f"No checkpoint at outputs_final/with_emoji/fold_{fold_no}/model "
+            f"No checkpoint at {rel} "
             "(train.py ran without --save_model)"
         )
     try:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         tok = AutoTokenizer.from_pretrained(str(model_dir))
         mdl = AutoModelForSequenceClassification.from_pretrained(str(model_dir)).to(device).eval()
-        return tok, mdl, device, fold_no, f"with_emoji/fold_{fold_no}/model"
+        try:
+            src = str(model_dir.relative_to(ROOT))
+        except ValueError:
+            src = str(model_dir)
+        return tok, mdl, device, fold_no, src
     except Exception as e:
         return None, None, None, None, f"Checkpoint load failed: {e}"
 
@@ -129,11 +159,29 @@ def predict_xlmr(text_clean, tok, mdl, device):
 
 
 def load_summary():
-    """Headline numbers, live from result files with verified fallbacks."""
+    """Headline numbers, live from result files with verified fallbacks.
+
+    Searched locations (first hit wins) for each file:
+      summary_metrics.csv      : outputs_final/summary/ > 3_Evaluation_and_Stats/
+      wilcoxon_result.json     : outputs_final/summary/ > 3_Evaluation_and_Stats/
+      summary_metrics_full.json: outputs_final/summary/ > 3_Evaluation_and_Stats/
+    Each file upgrades only its own fields; anything missing keeps FALLBACK values.
+    RESULTS["from_files"] is True if the main summary CSV was found.
+    RESULTS["sources"] records which file each section came from.
+    """
     res = dict(FALLBACK)
     res["from_files"] = False
+    res["sources"] = {}
+    # Main metrics CSV is required for live numbers; the other two are optional upgrades.
+    summary_file = _first_existing(
+        SUMMARY_DIR / "summary_metrics.csv",
+        EVAL_DIR / "summary" / "summary_metrics.csv",
+        EVAL_DIR / "summary_metrics.csv",
+    )
+    if summary_file is None:
+        return res
     try:
-        df = pd.read_csv(SUMMARY_DIR / "summary_metrics.csv")
+        df = pd.read_csv(summary_file)
         b = df[(df["condition"] == "no_emoji") & (df["metric"] == "macro_f1")].iloc[0]
         p = df[(df["condition"] == "with_emoji") & (df["metric"] == "macro_f1")].iloc[0]
         res["base_mean"], res["base_std"] = float(b["mean"]), float(b["std"])
@@ -148,19 +196,51 @@ def load_summary():
             row_p = df[(df["condition"] == "with_emoji") & (df["metric"] == f"{label}_f1")].iloc[0]
             pc[label] = {"base_f1": float(row_b["mean"]), "prop_f1": float(row_p["mean"])}
         res["per_class"] = pc
-        w = json.loads((SUMMARY_DIR / "wilcoxon_result.json").read_text(encoding="utf-8"))
-        res["base_folds"] = [round(x, 4) for x in w["baseline_macro_f1_per_fold"]]
-        res["prop_folds"] = [round(x, 4) for x in w["proposed_macro_f1_per_fold"]]
-        res["W"] = float(w["wilcoxon_statistic"])
-        res["p"] = float(w["wilcoxon_p_value"])
-        res["alpha"] = float(w.get("alpha", 0.05))
-        full = json.loads((SUMMARY_DIR / "summary_metrics_full.json").read_text(encoding="utf-8"))
-        cms = full.get("confusion_matrices", {})
-        if "no_emoji" in cms:
-            res["cm_no"] = cms["no_emoji"]
-        if "with_emoji" in cms:
-            res["cm_with"] = cms["with_emoji"]
+        try:
+            rel = summary_file.relative_to(ROOT)
+        except ValueError:
+            rel = summary_file
+        res["sources"]["summary_metrics.csv"] = str(rel)
         res["from_files"] = True
+    except Exception:
+        return res
+    # Optional upgrades: per-fold Wilcoxon + confusion matrices. Keep FALLBACK on miss.
+    try:
+        wilcoxon_file = _first_existing(
+            SUMMARY_DIR / "wilcoxon_result.json",
+            EVAL_DIR / "summary" / "wilcoxon_result.json",
+            EVAL_DIR / "wilcoxon_result.json",
+        )
+        if wilcoxon_file is not None:
+            w = json.loads(wilcoxon_file.read_text(encoding="utf-8"))
+            res["base_folds"] = [round(x, 4) for x in w["baseline_macro_f1_per_fold"]]
+            res["prop_folds"] = [round(x, 4) for x in w["proposed_macro_f1_per_fold"]]
+            res["W"] = float(w["wilcoxon_statistic"])
+            res["p"] = float(w["wilcoxon_p_value"])
+            res["alpha"] = float(w.get("alpha", 0.05))
+            try:
+                res["sources"]["wilcoxon_result.json"] = str(wilcoxon_file.relative_to(ROOT))
+            except ValueError:
+                res["sources"]["wilcoxon_result.json"] = str(wilcoxon_file)
+    except Exception:
+        pass
+    try:
+        full_file = _first_existing(
+            SUMMARY_DIR / "summary_metrics_full.json",
+            EVAL_DIR / "summary" / "summary_metrics_full.json",
+            EVAL_DIR / "summary_metrics_full.json",
+        )
+        if full_file is not None:
+            full = json.loads(full_file.read_text(encoding="utf-8"))
+            cms = full.get("confusion_matrices", {})
+            if "no_emoji" in cms:
+                res["cm_no"] = cms["no_emoji"]
+            if "with_emoji" in cms:
+                res["cm_with"] = cms["with_emoji"]
+            try:
+                res["sources"]["summary_metrics_full.json"] = str(full_file.relative_to(ROOT))
+            except ValueError:
+                res["sources"]["summary_metrics_full.json"] = str(full_file)
     except Exception:
         pass
     return res
@@ -209,7 +289,7 @@ with tab1:
     st.write("Labels: **0 = Neutral**, **1 = Offensive**, **2 = Hate Speech**.")
     tok, mdl, device, fold_no, src = load_xlmr()
     if tok is not None:
-        st.success(f"Using XLM-RoBERTa checkpoint: `3_Evaluation_and_Stats/outputs_final/{src}`")
+        st.success(f"Using XLM-RoBERTa checkpoint: `{src}`")
         use_xlmr = True
     else:
         st.info(
@@ -262,6 +342,15 @@ with tab1:
 # ================= Tab 2: Experimental Metrics =================
 with tab2:
     st.header("📊 Experimental Metrics")
+    if RESULTS.get("from_files"):
+        srcs = ", ".join(f"`{v}`" for v in RESULTS.get("sources", {}).values())
+        st.success(f"Live numbers from file(s): {srcs}")
+    else:
+        st.warning(
+            "Result files not found — showing verified fallback constants "
+            "(Colab T4 run). Add `3_Evaluation_and_Stats/summary_metrics.csv` "
+            "(or `outputs_final/summary/summary_metrics.csv`) to go live."
+        )
     base_pct = RESULTS["base_mean"] * 100
     prop_pct = RESULTS["prop_mean"] * 100
     gain_pp = (RESULTS["prop_mean"] - RESULTS["base_mean"]) * 100
