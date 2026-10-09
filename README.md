@@ -76,14 +76,7 @@ Wilcoxon signed-rank W=0.0, p=0.0625, not significant at 0.05 - expected: smalle
 two-sided p with n=5 is 0.0625, so p<0.05 is unattainable. No fold collapsed (~0.19 would mean
 single-class prediction; observed range 0.57-0.71 is healthy).
 
-## Full training (Google Colab, T4 GPU)
 
-Upload `project.zip` (top folder `project/` incl. `app.py`), open `run_full_pipeline.ipynb`,
-run Cells 1-10 one-by-one top to bottom with single Play (not Run all):
-Cell 1 GPU True, Cell 2 Drive OUTDIR (must be empty for fresh run), Cell 3 upload+extract,
-Cell 4 must print `OK - 1947 rows`, Cell 5 install, Cell 6 baseline (~1.5h), Cell 7 proposed (~1.5h),
-Cell 8 must show `5/5 True` both + table above, Cell 9 TF-IDF reference, Cell 10 downloads
-`outputs_final.zip`. Unzip it into `Hate speech detection project/outputs_final/` to refresh local proof.
 
 ## Rebuild the data from scratch (CPU, local, from Hate speech detection project root)
 
@@ -111,3 +104,5 @@ Expect: `common_rows_after_guard 1947`, both CSVs same `comment_id` order, folds
 - With 5 paired folds the smallest possible two-sided Wilcoxon p-value is 0.0625, so p < 0.05 cannot be reached.
   Report this limitation and the per-fold consistency of the effect.
 - Hate speech detection project `app.py` uses only inside-Hate speech detection project paths plus verified fallback constants, so the folder is portable.
+## Updates
+- Added usage instructions
