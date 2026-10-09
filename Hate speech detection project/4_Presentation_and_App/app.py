@@ -1,16 +1,15 @@
 """
-Hate Speech Detection - Streamlit Demo Dashboard (Hate speech detection project)
+Hate Speech Detection - Streamlit Demo Dashboard (Gemmbi)
 
 Sinhala-English code-mixed hate speech detection with emoji integration (XLM-RoBERTa).
 4 navigation tabs for examiner review:
  1. Live Moderation Tool    - predict code-mixed comments (0=Neutral, 1=Offensive, 2=Hate Speech)
  2. Experimental Metrics     - Baseline vs Proposed macro-F1 comparison (+9.50pp)
  3. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
- 4. Research Paper (PDF)     - embedded paper viewer (800px) + download button
+ 4. Statistical Significance - Wilcoxon signed-rank test (W=0.0, p=0.0625, alpha=0.05)
 
-Run from Hate speech detection project root:  streamlit run 4_Presentation_and_App/app.py
+Run from Gemmbi root:  streamlit run 4_Presentation_and_App/app.py
 """
-import base64
 import json
 import sys
 from pathlib import Path
@@ -18,8 +17,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Self-contained paths: everything resolves inside Hate speech detection project/ - no outside roots.
-# Copy Hate speech detection project/ anywhere and the app still runs (verified fallback constants cover missing files).
+# Self-contained paths: everything resolves inside Gemmbi/ - no outside roots.
+# Copy Gemmbi/ anywhere and the app still runs (verified fallback constants cover missing files).
 APP_DIR = Path(__file__).resolve().parent
 ROOT = APP_DIR.parent
 PREP_DIR = ROOT / "1_Data_Preparation"
@@ -166,24 +165,6 @@ def load_summary():
     return res
 
 
-def find_paper_pdf():
-    """Compiled research paper PDF.
-
-    Priority: paper.pdf / main.pdf, then any *paper* name (case-insensitive),
-    then the sole PDF in the folder (e.g. Hate_Speech_Detection.pdf).
-    To change the displayed paper, save it as paper.pdf next to app.py.
-    """
-    for name in ["paper.pdf", "main.pdf"]:
-        p = APP_DIR / name
-        if p.exists():
-            return p
-    for p in sorted(APP_DIR.glob("*.pdf")):
-        if "paper" in p.name.lower():
-            return p
-    sole = sorted(APP_DIR.glob("*.pdf"))
-    return sole[0] if len(sole) == 1 else None
-
-
 RESULTS = load_summary()
 
 # ---------------- page chrome ----------------
@@ -215,37 +196,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-with st.sidebar:
-    st.header("📌 Project at a glance")
-    st.write(
-        "**Research question:** does encoding emoji as text improve macro-F1 of fine-tuned "
-        "XLM-RoBERTa on neutral / offensive / hate Facebook + YouTube comments?"
-    )
-    st.markdown(
-        f"<span class='badge'>Baseline {RESULTS['base_mean']*100:.2f}%</span>"
-        f"<span class='badge'>Proposed {RESULTS['prop_mean']*100:.2f}%</span>"
-        f"<span class='badge'>+{(RESULTS['prop_mean']-RESULTS['base_mean'])*100:.2f}pp · 5/5 folds</span>",
-        unsafe_allow_html=True,
-    )
-    st.divider()
-    st.subheader("🗂️ Corpus")
-    st.write(
-        "- **1,947** comments (Facebook 1,255 · YouTube 692)\n"
-        "- Neutral 846 · Offensive 563 · Hate 538\n"
-        "- **707** comments (36%) contain emoji\n"
-        "- Stratified-group 5-fold, seed 42, ~1,557 train / ~390 test"
-    )
-    st.divider()
-    st.subheader("⚙️ Pipeline")
-    st.write(
-        "1_Data_Preparation → 2_Model_Training → 3_Evaluation_and_Stats → 4_Presentation_and_App\n\n"
-        "Preprocessing: URL/@ removal → emoji **encode/strip toggle** → lowercase → "
-        "repeat-char collapse → whitespace norm → ≥3-token + common-row guard."
-    )
-    st.divider()
-    st.caption("Labels: 0 = Neutral · 1 = Offensive · 2 = Hate Speech")
-
-tab1, tab2, tab3= st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "👉 Live Moderation Tool",
     "📊 Experimental Metrics",
     "⚖️ Statistical Significance",
@@ -310,7 +261,6 @@ with tab1:
 # ================= Tab 2: Experimental Metrics =================
 with tab2:
     st.header("📊 Experimental Metrics")
-    st.write("Stratified 5-fold cross-validation, identical folds for both conditions (mean ± std).")
     base_pct = RESULTS["base_mean"] * 100
     prop_pct = RESULTS["prop_mean"] * 100
     gain_pp = (RESULTS["prop_mean"] - RESULTS["base_mean"]) * 100
@@ -318,13 +268,9 @@ with tab2:
     m1.markdown(f"<div class='stat-card'><div class='v'>{base_pct:.2f}%</div><div class='l'>Baseline macro-F1 ±{RESULTS['base_std']*100:.2f}%</div></div>", unsafe_allow_html=True)
     m2.markdown(f"<div class='stat-card'><div class='v'>{prop_pct:.2f}%</div><div class='l'>Proposed macro-F1 ±{RESULTS['prop_std']*100:.2f}%</div></div>", unsafe_allow_html=True)
     m3.markdown(f"<div class='stat-card'><div class='v'>+{gain_pp:.2f}pp</div><div class='l'>Improvement · wins 5/5 folds</div></div>", unsafe_allow_html=True)
-    st.table(pd.DataFrame({
-        "Model": ["XLM-R Baseline (emoji stripped)", "XLM-R Proposed (emoji → text)"],
-        "Macro-F1": [f"{base_pct:.2f}%", f"{prop_pct:.2f}%"],
-        "Accuracy": [f"{RESULTS['base_acc']*100:.2f}%", f"{RESULTS['prop_acc']*100:.2f}%"],
-        "Macro AUC": [f"{RESULTS['base_auc']*100:.2f}%", f"{RESULTS['prop_auc']*100:.2f}%"],
-    }))
-    st.success(f"Performance improvement: **+{gain_pp:.2f} percentage points** — the proposed input wins in every fold.")
+    st.caption(f"Accuracy {RESULTS['base_acc']*100:.2f}% → {RESULTS['prop_acc']*100:.2f}% · "
+               f"Macro AUC {RESULTS['base_auc']*100:.2f}% → {RESULTS['prop_auc']*100:.2f}% · "
+               f"Stratified 5-fold, identical folds, mean ± std.")
     st.subheader("Macro-F1 per fold")
     st.bar_chart(pd.DataFrame(
         {"Baseline": RESULTS["base_folds"], "Proposed": RESULTS["prop_folds"]},
@@ -349,6 +295,61 @@ with tab2:
         col.write(f"**{title}**")
         col.table(pd.DataFrame(disp, index=["true Neutral", "true Offensive", "true Hate"],
                                columns=["pred Neutral", "pred Offensive", "pred Hate"]))
+    st.subheader("🧮 How marks are counted — one box at a time")
+    st.write("Pretend only two things exist: **this box vs everything else**. Follow steps 1 → 4.")
+    ex_model = st.radio("Model:", ["Proposed", "Baseline"], horizontal=True, key="ex_model")
+    ex_class = st.radio("Box:", ["Offensive (rude)", "Neutral", "Hate"],
+                        horizontal=True, key="ex_class")
+    ex_cm = RESULTS["cm_with"] if ex_model == "Proposed" else RESULTS["cm_no"]
+    ex_idx = {"Neutral": 0, "Offensive (rude)": 1, "Hate": 2}[ex_class]
+    ex_tp = ex_cm[ex_idx][ex_idx]
+    ex_fn = sum(ex_cm[ex_idx]) - ex_tp
+    ex_fp = sum(row[ex_idx] for row in ex_cm) - ex_tp
+    ex_row = sum(ex_cm[ex_idx])
+    ex_col = sum(row[ex_idx] for row in ex_cm)
+    ex_r = ex_tp / ex_row
+    ex_p = ex_tp / ex_col
+    ex_f1 = 2 * ex_p * ex_r / (ex_p + ex_r)
+    st.markdown("**Step 1 — Right catches (TP): the diagonal cell**")
+    st.markdown(f"<div class='stat-card'><div class='v'>{ex_tp}</div>"
+                f"<div class='l'>really {ex_class} → guessed {ex_class}</div></div>",
+                unsafe_allow_html=True)
+    st.markdown("**Step 2 — The two error piles (see them lit up below)**")
+    s1, s2 = st.columns(2)
+    s1.markdown(f"<div class='stat-card'><div class='v'>{ex_fn}</div>"
+                f"<div class='l'>🟠 Missed (FN): really {ex_class}, guessed otherwise — the rest of its row</div></div>",
+                unsafe_allow_html=True)
+    s2.markdown(f"<div class='stat-card'><div class='v'>{ex_fp}</div>"
+                f"<div class='l'>🔵 False alarms (FP): not {ex_class}, guessed {ex_class} — the rest of its column</div></div>",
+                unsafe_allow_html=True)
+
+    def _cell_color(r, c):
+        if r == ex_idx and c == ex_idx:
+            return "background-color: #a5d6a7; font-weight: bold"
+        if r == ex_idx:
+            return "background-color: #ffe0b2"
+        if c == ex_idx:
+            return "background-color: #bbdefb"
+        return ""
+
+    st.dataframe(
+        pd.DataFrame(ex_cm, index=["true Neutral", "true Offensive", "true Hate"],
+                     columns=["pred Neutral", "pred Offensive", "pred Hate"])
+        .style.apply(lambda row: [_cell_color(row.name[5:] and ["Neutral", "Offensive", "Hate"].index(row.name[5:]), c)
+                                  for c in range(3)], axis=1),
+        use_container_width=True,
+    )
+    st.markdown("**Step 3 — Two fractions**")
+    st.write(f"**Recall** = {ex_tp} ÷ {ex_row} (row) = **{ex_r:.2f}** — caught this much of the box")
+    st.write(f"**Precision** = {ex_tp} ÷ {ex_col} (column) = **{ex_p:.2f}** — when it says the box, right this often")
+    st.markdown("**Step 4 — Combine, then average the 3 boxes**")
+    st.success(f"**F1 of this box = 2 × {ex_p:.3f} × {ex_r:.3f} ÷ ({ex_p:.3f} + {ex_r:.3f}) = {ex_f1:.2f}**")
+    f1s = []
+    for i in range(3):
+        tp, rt, ct = ex_cm[i][i], sum(ex_cm[i]), sum(r[i] for r in ex_cm)
+        p, r = tp / ct, tp / rt
+        f1s.append(2 * p * r / (p + r))
+    st.write(f"**Final mark (macro-F1)** = ({f1s[0]:.2f} + {f1s[1]:.2f} + {f1s[2]:.2f}) ÷ 3 = **{sum(f1s)/3:.2f}**")
 
 # ================= Tab 3: Statistical Significance =================
 with tab3:
@@ -379,3 +380,4 @@ with tab3:
         "Proposed": RESULTS["prop_folds"],
         "Diff (+ favours Proposed)": [round(p - b, 4) for b, p in zip(RESULTS["base_folds"], RESULTS["prop_folds"])],
     }), use_container_width=True)
+
